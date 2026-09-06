@@ -22,6 +22,7 @@
   .timer{ font-family:"Orbitron",sans-serif; font-weight:800; font-size:30px; letter-spacing:0.04em; color:var(--lime); text-shadow:0 0 14px rgba(180,255,57,0.55); font-variant-numeric:tabular-nums; }
   .icon-btn{ pointer-events:auto; width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:rgba(26,11,59,0.72); border:2px solid var(--orange); color:var(--orange); box-shadow:0 0 12px rgba(255,106,42,0.35); cursor:pointer; font-size:20px; backdrop-filter:blur(4px); }
   .icon-btn:active{ transform:scale(0.94); }
+  .hud-actions{ display:flex; gap:8px; }
   .pill{ pointer-events:auto; font-family:"Orbitron",sans-serif; font-weight:600; font-size:13px; letter-spacing:0.14em; text-transform:uppercase; padding:12px 22px; border-radius:999px; cursor:pointer; background:rgba(26,11,59,0.7); color:var(--cyan); border:2px solid var(--cyan); box-shadow:0 0 16px rgba(34,245,255,0.35), inset 0 0 10px rgba(34,245,255,0.12); backdrop-filter:blur(4px); }
   .pill:active{ transform:scale(0.96); }
   .hint{ font-size:14px; letter-spacing:0.04em; color:rgba(180,180,220,0.78); text-align:center; min-height:18px; font-weight:500; }
@@ -53,7 +54,10 @@
 <div class="hud hud-top">
   <span class="tag" id="sensorStatus">Sheet 01</span>
   <span class="timer" id="timer">00:00.0</span>
-  <div class="icon-btn" id="restartBtn" title="Restart" aria-label="Restart">↺</div>
+  <div class="hud-actions">
+    <button class="icon-btn" id="soundBtn" type="button" title="Mute sound" aria-label="Mute sound">♫</button>
+    <button class="icon-btn" id="restartBtn" type="button" title="Restart" aria-label="Restart">↺</button>
+  </div>
 </div>
 <div class="hud hud-bot">
   <div class="hint" id="hint"></div>
@@ -146,12 +150,85 @@ let m={ x:START.i, y:START.j, z:0, vx:0, vy:0 };   // world tile coords
 let trail=[], particles=[];
 let shake=0, flash=0, startTime=0, elapsed=0;
 let falling=0;   // >0 while dropping
+let fallCell=null;
 const keys={};
 let tiltOK=false, gotTilt=false, tiltListenerAdded=false;
 let beta0=null, gamma0=null, curBeta=0, curGamma=0;
 let tiltTimer=null;
 let wakeLock=null;
 let wax=0, way=0;
+
+/* ---------------- Procedural audio ---------------- */
+let audioCtx=null, masterGain=null, rollOsc=null, rollGain=null;
+let musicTimer=null, nextNoteTime=0, musicStep=0, audioMuted=false, lastHitSound=0;
+const melody=[659,0,784,0,880,0,784,0,587,0,698,0,784,0,523,0];
+const bass=[110,110,98,98,87.3,87.3,98,98];
+
+function playTone(freq,dur,type="square",vol=0.035,when=null,slideTo=null){
+  if(!audioCtx||audioMuted)return;
+  const t=Math.max(audioCtx.currentTime,when??audioCtx.currentTime);
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type=type; o.frequency.setValueAtTime(freq,t);
+  if(slideTo)o.frequency.exponentialRampToValueAtTime(slideTo,t+dur);
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(vol,t+Math.min(0.012,dur*0.25));
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g).connect(masterGain); o.start(t); o.stop(t+dur+0.02);
+}
+function scheduleMusic(){
+  if(!audioCtx||audioCtx.state!=="running"||state!=="playing")return;
+  if(nextNoteTime<audioCtx.currentTime)nextNoteTime=audioCtx.currentTime+0.03;
+  const stepDur=60/132/4;
+  while(nextNoteTime<audioCtx.currentTime+0.14){
+    const note=melody[musicStep%melody.length];
+    if(note&&musicStep%2===0)playTone(note,stepDur*1.35,"square",0.018,nextNoteTime);
+    if(musicStep%4===0)playTone(bass[(musicStep/4)%bass.length|0],stepDur*3.1,"triangle",0.032,nextNoteTime);
+    if(musicStep%8===6)playTone(1760,0.025,"square",0.008,nextNoteTime);
+    musicStep++; nextNoteTime+=stepDur;
+  }
+}
+function startMusic(){
+  if(!audioCtx)return;
+  if(musicTimer)clearInterval(musicTimer);
+  musicStep=0; nextNoteTime=audioCtx.currentTime+0.04;
+  musicTimer=setInterval(scheduleMusic,45); scheduleMusic();
+}
+function stopMusic(){ if(musicTimer){clearInterval(musicTimer);musicTimer=null;} }
+async function initAudio(){
+  const AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC)return;
+  if(!audioCtx){
+    audioCtx=new AC({latencyHint:"interactive"});
+    masterGain=audioCtx.createGain(); masterGain.gain.value=audioMuted?0:0.24; masterGain.connect(audioCtx.destination);
+    rollOsc=audioCtx.createOscillator(); rollGain=audioCtx.createGain();
+    rollOsc.type="triangle"; rollOsc.frequency.value=70; rollGain.gain.value=0;
+    rollOsc.connect(rollGain).connect(masterGain); rollOsc.start();
+  }
+  if(audioCtx.state==="suspended")await audioCtx.resume();
+  startMusic();
+}
+function updateAudio(){
+  if(!audioCtx||!rollGain)return;
+  const speed=Math.hypot(m.vx,m.vy), active=state==="playing"&&!falling&&!audioMuted;
+  rollGain.gain.setTargetAtTime(active?Math.min(0.045,speed*0.006):0,audioCtx.currentTime,0.035);
+  rollOsc.frequency.setTargetAtTime(62+speed*27,audioCtx.currentTime,0.04);
+}
+function sfxHit(strength){
+  if(!audioCtx||audioCtx.currentTime-lastHitSound<0.055)return;
+  lastHitSound=audioCtx.currentTime; playTone(120+strength*28,0.065,"square",0.055);
+}
+function sfxFall(){ playTone(260,0.42,"sawtooth",0.045,null,55); }
+function sfxWin(){
+  if(!audioCtx)return; const t=audioCtx.currentTime;
+  [523,659,784,1047].forEach((n,i)=>playTone(n,0.38,"square",0.035,t+i*0.09));
+}
+function toggleSound(){
+  audioMuted=!audioMuted;
+  const btn=document.getElementById("soundBtn"); btn.textContent=audioMuted?"🔇":"♫";
+  btn.title=btn.ariaLabel=audioMuted?"Unmute sound":"Mute sound";
+  if(masterGain)masterGain.gain.setTargetAtTime(audioMuted?0:0.24,audioCtx.currentTime,0.025);
+  toast(audioMuted?"Sound off":"Sound on");
+}
 
 /* ---------------- Input ---------------- */
 addEventListener("keydown",e=>{ if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key))e.preventDefault();
@@ -204,21 +281,25 @@ async function releaseWakeLock(){
   if(wakeLock){ const lock=wakeLock; wakeLock=null; try{ await lock.release(); }catch(e){} }
 }
 document.addEventListener("visibilitychange",()=>{
-  if(document.visibilityState==="visible"&&state==="playing")keepScreenAwake();
+  if(document.visibilityState==="visible"&&state==="playing"){
+    keepScreenAwake(); if(audioCtx){audioCtx.resume();nextNoteTime=audioCtx.currentTime+0.04;}
+  }else if(document.visibilityState==="hidden"&&audioCtx)audioCtx.suspend();
 });
 document.getElementById("recenterBtn").addEventListener("click",recenter);
 document.getElementById("restartBtn").addEventListener("click",()=>resetMarble(true));
+document.getElementById("soundBtn").addEventListener("click",toggleSound);
 
 /* ---------------- Flow ---------------- */
 const startOverlay=document.getElementById("startOverlay"), winOverlay=document.getElementById("winOverlay"), hintEl=document.getElementById("hint");
 document.getElementById("startBtn").addEventListener("click",startGame);
 document.getElementById("againBtn").addEventListener("click",startGame);
-async function startGame(){ startOverlay.hidden=true; winOverlay.hidden=true; keepScreenAwake(); await enableTilt();
+async function startGame(){ startOverlay.hidden=true; winOverlay.hidden=true; keepScreenAwake();
+  const audioStart=initAudio(), tiltStart=enableTilt(); await Promise.all([audioStart,tiltStart]);
   setTimeout(()=>{ if(gotTilt)hintEl.innerHTML="Tilt to roll &middot; tap <b>Recenter</b> to re-zero"; },700);
   resetMarble(false); state="playing"; startTime=performance.now(); elapsed=0; }
-function resetMarble(full){ m.x=START.i; m.y=START.j; m.z=0; m.vx=0; m.vy=0; falling=0; trail=[];
-  if(full&&state==="playing"){ startTime=performance.now(); elapsed=0; } }
-function win(){ state="won"; releaseWakeLock(); elapsed=(performance.now()-startTime)/1000;
+function resetMarble(full){ m.x=START.i; m.y=START.j; m.z=0; m.vx=0; m.vy=0; falling=0; fallCell=null; trail=[];
+  if(full&&state==="playing"){ startTime=performance.now(); elapsed=0; playTone(330,0.07,"square",0.035); } }
+function win(){ state="won"; releaseWakeLock(); stopMusic(); sfxWin(); elapsed=(performance.now()-startTime)/1000;
   document.getElementById("winTime").textContent=fmt(elapsed);
   document.getElementById("winSub").textContent = elapsed<18?"Machine-approved. Blazing.":elapsed<32?"Clean run.":"You made it — that's what counts.";
   winOverlay.hidden=false; const g=toScreen(proj(GOALC.i,GOALC.j,0)); burst(g.x,g.y,64,["#B4FF39","#22F5FF","#FFF3E2"]); flash=0.9; }
@@ -269,7 +350,7 @@ function collideWalls(){
       m.x+=nx*ov; m.y+=ny*ov;
       const vn=m.vx*nx+m.vy*ny;
       if(vn<0){ m.vx-=(1+WALL_E)*vn*nx; m.vy-=(1+WALL_E)*vn*ny;
-        if(-vn>2){ const s=toScreen(proj(m.x,m.y,0)); sparks(s.x,s.y,"#22F5FF",Math.min(10,-vn*2)); shake=Math.max(shake,Math.min(6,-vn*1.3)); } }
+        if(-vn>2){ sfxHit(-vn); const s=toScreen(proj(m.x,m.y,0)); sparks(s.x,s.y,"#22F5FF",Math.min(10,-vn*2)); shake=Math.max(shake,Math.min(6,-vn*1.3)); } }
     }
   }
 }
@@ -284,7 +365,7 @@ function checkGround(){
   }
   if(ci===GOALC.i&&cj===GOALC.j && Math.hypot(m.x-GOALC.i,m.y-GOALC.j)<0.4){ if(state==="playing")win(); }
 }
-function startFall(){ if(state!=="playing")return; falling=0.0001; m.vx*=0.3; m.vy*=0.3; shake=Math.max(shake,7); flash=0.35;
+function startFall(){ if(state!=="playing")return; falling=0.0001; fallCell={i:Math.round(m.x),j:Math.round(m.y)}; m.vx*=0.3; m.vy*=0.3; shake=Math.max(shake,7); flash=0.35; sfxFall();
   const s=toScreen(proj(m.x,m.y,0)); sparks(s.x,s.y,"#7A2FF0",16); }
 
 /* ---------------- Particles ---------------- */
@@ -371,6 +452,16 @@ function drawMarble(){
   ctx.fillStyle="rgba(255,255,255,0.95)"; ctx.beginPath(); ctx.arc(c.x-rad*0.34,c.y-rad*0.42,rad*0.16,0,7); ctx.fill();
 }
 
+function drawDepthMarble(){
+  if(!falling||!fallCell){ drawMarble(); return; }
+  // Once the marble drops below the surface, only show the portion visible
+  // through the diamond-shaped opening. This makes it sink into the course
+  // rather than painting across the foreground tiles.
+  const {i,j}=fallCell;
+  const opening=[P(i-0.46,j-0.46,0),P(i+0.46,j-0.46,0),P(i+0.46,j+0.46,0),P(i-0.46,j+0.46,0)];
+  ctx.save(); quad(opening[0],opening[1],opening[2],opening[3]); ctx.clip(); drawMarble(); ctx.restore();
+}
+
 let NOW=0;
 function draw(ts){
   NOW=ts;
@@ -389,7 +480,7 @@ function draw(ts){
     if(isWall(i,j)) depthItems.push({d:i+j,l:2,f:()=>drawWall(i,j)});
   }
   baseItems.sort((a,b)=>a.d-b.d); for(const it of baseItems)it.f();
-  depthItems.push({d:m.x+m.y,l:1,f:drawMarble});
+  depthItems.push({d:m.x+m.y,l:1,f:drawDepthMarble});
   depthItems.sort((a,b)=>a.d-b.d||a.l-b.l); for(const it of depthItems)it.f();
 
   // particles (screen space)
@@ -420,6 +511,7 @@ function frame(ts){ let dt=(ts-last)/1000; last=ts; if(dt>0.05)dt=0.05;
     }
     elapsed=(ts-startTime)/1000; timerEl.textContent=fmt(elapsed);
   }
+  updateAudio();
   stepParticles(dt);
   if(shake>0)shake=Math.max(0,shake-dt*22);
   if(flash>0)flash=Math.max(0,flash-dt*1.6);
