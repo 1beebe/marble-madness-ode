@@ -16,13 +16,13 @@
   #game{ display:block; touch-action:none; }
 
   .hud{ position:fixed; left:0; right:0; pointer-events:none; z-index:5; }
-  .hud-top{ top:0; padding:max(14px,env(safe-area-inset-top)) 16px 10px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .hud-top{ top:0; padding:max(14px,env(safe-area-inset-top)) 16px 10px; display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:10px; }
   .hud-bot{ bottom:0; padding:10px 16px max(16px,env(safe-area-inset-bottom)); display:flex; flex-direction:column; align-items:center; gap:8px; }
-  .tag{ font-family:"Orbitron",sans-serif; font-size:11px; letter-spacing:0.18em; color:var(--steel); text-transform:uppercase; }
+  .tag{ font-family:"Orbitron",sans-serif; font-size:11px; letter-spacing:0.08em; color:var(--steel); text-transform:uppercase; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; }
   .timer{ font-family:"Orbitron",sans-serif; font-weight:800; font-size:30px; letter-spacing:0.04em; color:var(--lime); text-shadow:0 0 14px rgba(180,255,57,0.55); font-variant-numeric:tabular-nums; }
-  .icon-btn{ pointer-events:auto; width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:rgba(26,11,59,0.72); border:2px solid var(--orange); color:var(--orange); box-shadow:0 0 12px rgba(255,106,42,0.35); cursor:pointer; font-size:20px; backdrop-filter:blur(4px); }
+  .icon-btn{ pointer-events:auto; width:42px; height:42px; padding:0; border-radius:12px; display:grid; place-items:center; background:rgba(26,11,59,0.72); border:2px solid var(--orange); color:var(--orange); box-shadow:0 0 12px rgba(255,106,42,0.35); cursor:pointer; font:800 9px/1 "Orbitron",sans-serif; letter-spacing:0.04em; backdrop-filter:blur(4px); }
   .icon-btn:active{ transform:scale(0.94); }
-  .hud-actions{ display:flex; gap:8px; }
+  .hud-actions{ display:flex; gap:8px; justify-self:end; }
   .pill{ pointer-events:auto; font-family:"Orbitron",sans-serif; font-weight:600; font-size:13px; letter-spacing:0.14em; text-transform:uppercase; padding:12px 22px; border-radius:999px; cursor:pointer; background:rgba(26,11,59,0.7); color:var(--cyan); border:2px solid var(--cyan); box-shadow:0 0 16px rgba(34,245,255,0.35), inset 0 0 10px rgba(34,245,255,0.12); backdrop-filter:blur(4px); }
   .pill:active{ transform:scale(0.96); }
   .hint{ font-size:14px; letter-spacing:0.04em; color:rgba(180,180,220,0.78); text-align:center; min-height:18px; font-weight:500; }
@@ -43,6 +43,7 @@
   .legend span{ display:inline-flex; align-items:center; gap:7px; }
   .sw{ width:12px; height:12px; border-radius:3px; box-shadow:0 0 8px currentColor; }
   @media (prefers-reduced-motion: reduce){ .cta{ animation:none; } }
+  @media (max-width:420px){ .tag{font-size:9px}.timer{font-size:24px}.icon-btn{width:36px;height:38px}.hud-actions{gap:5px} }
   .toast{ position:fixed; left:50%; top:74px; transform:translateX(-50%) translateY(-8px); z-index:8; font-family:"Orbitron",sans-serif; font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:var(--cyan); background:rgba(11,2,33,0.9); border:1px solid rgba(34,245,255,0.5); padding:8px 16px; border-radius:10px; opacity:0; transition:opacity .25s,transform .25s; pointer-events:none; box-shadow:0 0 14px rgba(34,245,255,0.3); }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 </style>
@@ -55,8 +56,8 @@
   <span class="tag" id="sensorStatus">Sheet 01</span>
   <span class="timer" id="timer">00:00.0</span>
   <div class="hud-actions">
-    <button class="icon-btn" id="soundBtn" type="button" title="Mute sound" aria-label="Mute sound">♫</button>
-    <button class="icon-btn" id="restartBtn" type="button" title="Restart" aria-label="Restart">↺</button>
+    <button class="icon-btn" id="soundBtn" type="button" title="Mute sound" aria-label="Mute sound">SND</button>
+    <button class="icon-btn" id="restartBtn" type="button" title="Restart" aria-label="Restart">RST</button>
   </div>
 </div>
 <div class="hud hud-bot">
@@ -154,15 +155,22 @@ let fallCell=null;
 const keys={};
 let tiltOK=false, gotTilt=false, tiltListenerAdded=false;
 let beta0=null, gamma0=null, curBeta=0, curGamma=0;
-let tiltTimer=null;
+let tiltTimer=null, calibratingUntil=0;
 let wakeLock=null;
 let wax=0, way=0;
 
 /* ---------------- Procedural audio ---------------- */
 let audioCtx=null, masterGain=null, rollOsc=null, rollGain=null;
 let musicTimer=null, nextNoteTime=0, musicStep=0, audioMuted=false, lastHitSound=0;
-const melody=[659,0,784,0,880,0,784,0,587,0,698,0,784,0,523,0];
-const bass=[110,110,98,98,87.3,87.3,98,98];
+// Original arcade-folk phrase: varied contour and rests keep it melodic
+// instead of reading like an evenly pulsing countdown.
+const melody=[
+  440,0,523,587,0,523,0,440, 392,0,440,0,330,0,392,0,
+  440,523,0,659,0,587,523,0, 494,0,392,330,0,392,0,0,
+  330,0,392,440,0,523,0,440, 392,330,0,294,0,330,392,0,
+  440,0,523,0,659,587,0,523, 440,0,392,330,294,0,330,0
+];
+const bass=[110,98,87.3,82.4,110,130.8,98,110];
 
 function playTone(freq,dur,type="square",vol=0.035,when=null,slideTo=null){
   if(!audioCtx||audioMuted)return;
@@ -178,12 +186,16 @@ function playTone(freq,dur,type="square",vol=0.035,when=null,slideTo=null){
 function scheduleMusic(){
   if(!audioCtx||audioCtx.state!=="running"||state!=="playing")return;
   if(nextNoteTime<audioCtx.currentTime)nextNoteTime=audioCtx.currentTime+0.03;
-  const stepDur=60/132/4;
+  const stepDur=60/116/4;
   while(nextNoteTime<audioCtx.currentTime+0.14){
     const note=melody[musicStep%melody.length];
-    if(note&&musicStep%2===0)playTone(note,stepDur*1.35,"square",0.018,nextNoteTime);
-    if(musicStep%4===0)playTone(bass[(musicStep/4)%bass.length|0],stepDur*3.1,"triangle",0.032,nextNoteTime);
-    if(musicStep%8===6)playTone(1760,0.025,"square",0.008,nextNoteTime);
+    if(note){
+      playTone(note,stepDur*1.65,"triangle",0.016,nextNoteTime);
+      if(musicStep%16===3||musicStep%16===11)playTone(note*2,stepDur*0.72,"sine",0.006,nextNoteTime);
+    }
+    const root=bass[(musicStep/8)%bass.length|0];
+    if(musicStep%8===0)playTone(root,stepDur*6.2,"triangle",0.025,nextNoteTime);
+    if(musicStep%8===5)playTone(root*1.5,stepDur*1.7,"sine",0.012,nextNoteTime);
     musicStep++; nextNoteTime+=stepDur;
   }
 }
@@ -217,14 +229,18 @@ function sfxHit(strength){
   if(!audioCtx||audioCtx.currentTime-lastHitSound<0.055)return;
   lastHitSound=audioCtx.currentTime; playTone(120+strength*28,0.065,"square",0.055);
 }
-function sfxFall(){ playTone(260,0.42,"sawtooth",0.045,null,55); }
+function sfxFall(){
+  if(!audioCtx)return; const t=audioCtx.currentTime;
+  playTone(720,0.58,"triangle",0.065,t,72);
+  playTone(360,0.72,"sine",0.035,t+0.015,48);
+}
 function sfxWin(){
   if(!audioCtx)return; const t=audioCtx.currentTime;
   [523,659,784,1047].forEach((n,i)=>playTone(n,0.38,"square",0.035,t+i*0.09));
 }
 function toggleSound(){
   audioMuted=!audioMuted;
-  const btn=document.getElementById("soundBtn"); btn.textContent=audioMuted?"🔇":"♫";
+  const btn=document.getElementById("soundBtn"); btn.textContent=audioMuted?"OFF":"SND";
   btn.title=btn.ariaLabel=audioMuted?"Unmute sound":"Mute sound";
   if(masterGain)masterGain.gain.setTargetAtTime(audioMuted?0:0.24,audioCtx.currentTime,0.025);
   toast(audioMuted?"Sound off":"Sound on");
@@ -235,6 +251,8 @@ addEventListener("keydown",e=>{ if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRigh
   keys[e.key.toLowerCase()]=true; if(e.key===" "&&state!=="playing")startGame(); });
 addEventListener("keyup",e=>{ keys[e.key.toLowerCase()]=false; });
 const sensorStatusEl=document.getElementById("sensorStatus");
+let lastSensorPaint=0;
+function signedAngle(v){ const s=v>=0?"+":"−"; return s+Math.abs(v).toFixed(1).padStart(4,"0"); }
 function screenAngle(){
   const a=screen.orientation&&Number.isFinite(screen.orientation.angle)
     ? screen.orientation.angle : (Number(window.orientation)||0);
@@ -242,12 +260,21 @@ function screenAngle(){
 }
 function onOrient(e){
   if(e.beta===null||e.gamma===null)return;
-  gotTilt=true; tiltOK=true; curBeta=e.beta; curGamma=e.gamma;
-  if(beta0===null){beta0=e.beta; gamma0=e.gamma;}
-  sensorStatusEl.textContent=`β ${e.beta.toFixed(1)} · γ ${e.gamma.toFixed(1)}`;
+  gotTilt=true; curBeta=e.beta; curGamma=e.gamma;
+  const now=performance.now();
+  if(beta0===null||now<calibratingUntil){
+    beta0=beta0===null?e.beta:beta0*0.75+e.beta*0.25;
+    gamma0=gamma0===null?e.gamma:gamma0*0.75+e.gamma*0.25;
+    tiltOK=false;
+  }else tiltOK=true;
+  if(now-lastSensorPaint>100){
+    sensorStatusEl.textContent=`β${signedAngle(e.beta)} γ${signedAngle(e.gamma)}`;
+    lastSensorPaint=now;
+  }
 }
 async function enableTilt(){
   gotTilt=false; tiltOK=false;
+  beta0=null; gamma0=null; calibratingUntil=performance.now()+450;
   clearTimeout(tiltTimer);
   if(!window.isSecureContext){ hintEl.innerHTML="<b>Motion needs HTTPS</b> · open the published URL"; return false; }
   const D=window.DeviceOrientationEvent;
@@ -269,7 +296,7 @@ async function enableTilt(){
     return true;
   }catch(e){ hintEl.innerHTML=`<b>Motion unavailable</b> · ${e.name||"browser blocked it"}`; return false; }
 }
-function recenter(){ if(tiltOK){ beta0=curBeta; gamma0=curGamma; toast("Recentered"); } else toast("Keyboard mode"); }
+function recenter(){ if(gotTilt){ beta0=curBeta; gamma0=curGamma; calibratingUntil=0; tiltOK=true; m.vx=m.vy=0; toast("Recentered"); } else toast("Keyboard mode"); }
 async function keepScreenAwake(){
   if(!("wakeLock" in navigator)||document.visibilityState!=="visible"||wakeLock)return;
   try{
@@ -314,8 +341,9 @@ function computeAccel(){
   if(keys["arrowup"]||keys["w"])sy-=1;
   if(keys["arrowdown"]||keys["s"])sy+=1;
   if(!(sx||sy) && tiltOK && beta0!==null){
-    const dg=clamp(curGamma-gamma0,-26,26)/26;
-    const db=clamp(curBeta-beta0,-26,26)/26;
+    const tiltAxis=d=>{ const a=Math.abs(d); return a<3?0:Math.sign(d)*clamp((a-3)/23,0,1); };
+    const dg=tiltAxis(curGamma-gamma0);
+    const db=tiltAxis(curBeta-beta0);
     // Rotate the phone-relative tilt vector into the current screen orientation.
     switch(screenAngle()){
       case 90:  sx=-db; sy=dg; break;
@@ -499,6 +527,7 @@ function draw(ts){
 
 /* ---------------- Loop ---------------- */
 let last=performance.now();
+let lastTimerText="";
 function frame(ts){ let dt=(ts-last)/1000; last=ts; if(dt>0.05)dt=0.05;
   if(state==="playing"){
     if(falling>0){
@@ -509,7 +538,8 @@ function frame(ts){ let dt=(ts-last)/1000; last=ts; if(dt>0.05)dt=0.05;
       const SUB=3; for(let k=0;k<SUB;k++) integrate(dt/SUB);
       checkGround();
     }
-    elapsed=(ts-startTime)/1000; timerEl.textContent=fmt(elapsed);
+    elapsed=(ts-startTime)/1000;
+    const timerText=fmt(elapsed); if(timerText!==lastTimerText){timerEl.textContent=timerText;lastTimerText=timerText;}
   }
   updateAudio();
   stepParticles(dt);
