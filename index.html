@@ -1,0 +1,413 @@
+<title>Grid Runner Glow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&display=swap">
+<style>
+  :root{ --void:#0B0221; --void2:#05010F; --cyan:#22F5FF; --magenta:#FF2D95; --lime:#B4FF39; --orange:#FF6A2A; --steel:#8A93B5; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; height:100%; background:var(--void2); overflow:hidden; overscroll-behavior:none; }
+  body{ font-family:"Rajdhani",system-ui,sans-serif; color:#EAF0FF; touch-action:none; user-select:none; -webkit-user-select:none; }
+  #app{ position:fixed; inset:0; background:radial-gradient(130% 100% at 50% 22%, #180a3a 0%, var(--void2) 72%); }
+  #game{ display:block; touch-action:none; }
+
+  .hud{ position:fixed; left:0; right:0; pointer-events:none; z-index:5; }
+  .hud-top{ top:0; padding:max(14px,env(safe-area-inset-top)) 16px 10px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .hud-bot{ bottom:0; padding:10px 16px max(16px,env(safe-area-inset-bottom)); display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .tag{ font-family:"Orbitron",sans-serif; font-size:11px; letter-spacing:0.18em; color:var(--steel); text-transform:uppercase; }
+  .timer{ font-family:"Orbitron",sans-serif; font-weight:800; font-size:30px; letter-spacing:0.04em; color:var(--lime); text-shadow:0 0 14px rgba(180,255,57,0.55); font-variant-numeric:tabular-nums; }
+  .icon-btn{ pointer-events:auto; width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:rgba(26,11,59,0.72); border:2px solid var(--orange); color:var(--orange); box-shadow:0 0 12px rgba(255,106,42,0.35); cursor:pointer; font-size:20px; backdrop-filter:blur(4px); }
+  .icon-btn:active{ transform:scale(0.94); }
+  .pill{ pointer-events:auto; font-family:"Orbitron",sans-serif; font-weight:600; font-size:13px; letter-spacing:0.14em; text-transform:uppercase; padding:12px 22px; border-radius:999px; cursor:pointer; background:rgba(26,11,59,0.7); color:var(--cyan); border:2px solid var(--cyan); box-shadow:0 0 16px rgba(34,245,255,0.35), inset 0 0 10px rgba(34,245,255,0.12); backdrop-filter:blur(4px); }
+  .pill:active{ transform:scale(0.96); }
+  .hint{ font-size:14px; letter-spacing:0.04em; color:rgba(180,180,220,0.78); text-align:center; min-height:18px; font-weight:500; }
+  .hint b{ color:var(--cyan); font-weight:700; }
+
+  .overlay{ position:fixed; inset:0; z-index:10; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; text-align:center; padding:28px; background:rgba(5,1,15,0.8); backdrop-filter:blur(6px); }
+  .overlay[hidden]{ display:none; }
+  .kicker{ font-family:"Orbitron",sans-serif; font-size:12px; letter-spacing:0.32em; color:var(--magenta); text-transform:uppercase; text-shadow:0 0 12px rgba(255,45,149,0.6); }
+  .title{ font-family:"Orbitron",sans-serif; font-weight:900; letter-spacing:0.02em; margin:0; line-height:0.98; font-size:clamp(40px,13vw,84px); text-transform:uppercase; background:linear-gradient(180deg,#EAF6FF,var(--cyan) 55%,#1FA6C9); -webkit-background-clip:text; background-clip:text; color:transparent; filter:drop-shadow(0 0 22px rgba(34,245,255,0.45)); text-wrap:balance; }
+  .sub{ font-size:17px; letter-spacing:0.03em; color:rgba(210,214,240,0.82); max-width:32ch; margin:0; line-height:1.45; }
+  .sub b{ color:var(--lime); font-weight:700; }
+  .cta{ pointer-events:auto; font-family:"Orbitron",sans-serif; font-weight:800; font-size:19px; letter-spacing:0.08em; text-transform:uppercase; padding:18px 38px; border-radius:14px; cursor:pointer; margin-top:4px; color:var(--void2); background:var(--lime); border:none; box-shadow:0 0 30px rgba(180,255,57,0.55),0 8px 24px rgba(0,0,0,0.5); animation:beat 1.7s ease-in-out infinite; }
+  .cta:active{ transform:scale(0.97); }
+  .cta.cyan{ background:var(--cyan); box-shadow:0 0 30px rgba(34,245,255,0.5),0 8px 24px rgba(0,0,0,0.5); }
+  @keyframes beat{ 0%,100%{ transform:scale(1);} 50%{ transform:scale(1.045);} }
+  .wintime{ font-family:"Orbitron",sans-serif; font-weight:800; font-size:clamp(36px,11vw,64px); color:var(--lime); text-shadow:0 0 20px rgba(180,255,57,0.6); font-variant-numeric:tabular-nums; margin:0; }
+  .legend{ display:flex; gap:16px 20px; flex-wrap:wrap; justify-content:center; margin-top:4px; font-size:13px; letter-spacing:0.05em; color:rgba(200,204,230,0.75); }
+  .legend span{ display:inline-flex; align-items:center; gap:7px; }
+  .sw{ width:12px; height:12px; border-radius:3px; box-shadow:0 0 8px currentColor; }
+  @media (prefers-reduced-motion: reduce){ .cta{ animation:none; } }
+  .toast{ position:fixed; left:50%; top:74px; transform:translateX(-50%) translateY(-8px); z-index:8; font-family:"Orbitron",sans-serif; font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:var(--cyan); background:rgba(11,2,33,0.9); border:1px solid rgba(34,245,255,0.5); padding:8px 16px; border-radius:10px; opacity:0; transition:opacity .25s,transform .25s; pointer-events:none; box-shadow:0 0 14px rgba(34,245,255,0.3); }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+
+<div id="app"><canvas id="game"></canvas></div>
+
+<div class="hud hud-top">
+  <span class="tag" id="sensorStatus">Sheet 01</span>
+  <span class="timer" id="timer">00:00.0</span>
+  <div class="icon-btn" id="restartBtn" title="Restart" aria-label="Restart">↺</div>
+</div>
+<div class="hud hud-bot">
+  <div class="hint" id="hint"></div>
+  <div class="pill" id="recenterBtn">⊕ Recenter</div>
+</div>
+<div class="toast" id="toast">Recentered</div>
+
+<div class="overlay" id="startOverlay">
+  <span class="kicker">An isometric tilt-to-roll tribute</span>
+  <h1 class="title">Marble<br>Madness</h1>
+  <p class="sub">Roll down the course to the <b>lime goal</b>. Mind the pits and the cliff edge; one slip sends you back to start.</p>
+  <button class="cta" id="startBtn">▶ Insert Coin</button>
+  <div class="legend">
+    <span><i class="sw" style="color:var(--cyan);background:#8A93B5;box-shadow:0 0 8px var(--cyan)"></i>You</span>
+    <span><i class="sw" style="color:var(--cyan);background:#1a0b40;box-shadow:0 0 8px var(--cyan)"></i>Wall</span>
+    <span><i class="sw" style="color:var(--magenta);background:#05010F;box-shadow:0 0 9px var(--magenta)"></i>Pit</span>
+    <span><i class="sw" style="color:var(--lime);background:var(--lime)"></i>Goal</span>
+  </div>
+</div>
+
+<div class="overlay" id="winOverlay" hidden>
+  <span class="kicker">Course Clear</span>
+  <p class="wintime" id="winTime">00:00.0</p>
+  <p class="sub" id="winSub">Clean run.</p>
+  <button class="cta cyan" id="againBtn">▶ Run It Back</button>
+</div>
+
+<script>
+const cv=document.getElementById("game"), ctx=cv.getContext("2d");
+const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------------- Level (isometric tile grid) ----------------
+   '.' floor   '#' wall block   'o' pit (void in floor)   ' ' void
+   'S' start floor   'G' goal floor                              */
+const MAP = [
+  "............",
+  ".S..........",
+  "....#.....o.",
+  "..o.#...##..",
+  "....#.......",
+  "......oo....",
+  "..##.....#..",
+  "..##.....#..",
+  ".......oo...",
+  "....#.......",
+  "..o.#...##..",
+  "....#....G..",
+  "............",
+];
+const ROWS=MAP.length, COLS=MAP[0].length;
+function cell(i,j){ if(j<0||j>=ROWS||i<0||i>=COLS) return " "; return MAP[j][i]; }
+function isFloor(i,j){ const c=cell(i,j); return c==="."||c==="S"||c==="G"; }
+function isWall(i,j){ return cell(i,j)==="#"; }
+function isVoid(i,j){ const c=cell(i,j); return c===" "||c==="o"; }   // pit or off-map = no floor
+let START={i:1,j:1}, GOALC={i:8,j:11};
+for(let j=0;j<ROWS;j++)for(let i=0;i<COLS;i++){ if(MAP[j][i]==="S")START={i,j}; if(MAP[j][i]==="G")GOALC={i,j}; }
+
+/* ---------------- Iso projection ---------------- */
+const HW=0.5, HH=0.30, ZH=0.66, WALLH=0.95, DEPTH=2.6; // proj units per tile
+let S=40, oxp=0, oyp=0, dpr=1;
+function proj(wx,wy,wz){ return { x:(wx-wy)*HW, y:(wx+wy)*HH - (wz||0)*ZH }; }
+function toScreen(p){ return { x:oxp+p.x*S, y:oyp+p.y*S }; }
+
+function computeFit(){
+  let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
+  const corners=[[-0.5,-0.5],[0.5,-0.5],[0.5,0.5],[-0.5,0.5]];
+  for(let j=0;j<ROWS;j++)for(let i=0;i<COLS;i++){
+    const wall=isWall(i,j)?WALLH:0;
+    for(const [dx,dy] of corners){
+      for(const z of [0, wall, -DEPTH]){
+        const p=proj(i+dx,j+dy,z);
+        if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y;
+      }
+    }
+  }
+  const w=window.innerWidth, h=window.innerHeight;
+  const padX=14, padTop=84, padBot=104;
+  S=Math.min((w-padX*2)/(maxX-minX), (h-padTop-padBot)/(maxY-minY));
+  oxp=(w-(maxX+minX)*S)/2;
+  oyp=padTop + (-minY)*S + ((h-padTop-padBot)-(maxY-minY)*S)/2;
+}
+function resize(){ const w=innerWidth,h=innerHeight; dpr=Math.min(devicePixelRatio||1,2);
+  cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); cv.style.width=w+"px"; cv.style.height=h+"px"; computeFit(); }
+addEventListener("resize",resize); resize();
+
+/* ---------------- State ---------------- */
+let state="start";
+let m={ x:START.i, y:START.j, z:0, vx:0, vy:0 };   // world tile coords
+let trail=[], particles=[];
+let shake=0, flash=0, startTime=0, elapsed=0;
+let falling=0;   // >0 while dropping
+const keys={};
+let tiltOK=false, gotTilt=false, tiltListenerAdded=false;
+let beta0=null, gamma0=null, curBeta=0, curGamma=0;
+let tiltTimer=null;
+let wax=0, way=0;
+
+/* ---------------- Input ---------------- */
+addEventListener("keydown",e=>{ if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key))e.preventDefault();
+  keys[e.key.toLowerCase()]=true; if(e.key===" "&&state!=="playing")startGame(); });
+addEventListener("keyup",e=>{ keys[e.key.toLowerCase()]=false; });
+const sensorStatusEl=document.getElementById("sensorStatus");
+function screenAngle(){
+  const a=screen.orientation&&Number.isFinite(screen.orientation.angle)
+    ? screen.orientation.angle : (Number(window.orientation)||0);
+  return ((a%360)+360)%360;
+}
+function onOrient(e){
+  if(e.beta===null||e.gamma===null)return;
+  gotTilt=true; tiltOK=true; curBeta=e.beta; curGamma=e.gamma;
+  if(beta0===null){beta0=e.beta; gamma0=e.gamma;}
+  sensorStatusEl.textContent=`β ${e.beta.toFixed(1)} · γ ${e.gamma.toFixed(1)}`;
+}
+async function enableTilt(){
+  gotTilt=false; tiltOK=false;
+  clearTimeout(tiltTimer);
+  if(!window.isSecureContext){ hintEl.innerHTML="<b>Motion needs HTTPS</b> · open the published URL"; return false; }
+  const D=window.DeviceOrientationEvent;
+  if(!D){ hintEl.innerHTML="<b>No orientation sensor API</b> · use keys"; return false; }
+  try{
+    if(typeof D.requestPermission==="function"){
+      const r=await D.requestPermission();
+      if(r!=="granted"){ hintEl.innerHTML="<b>Motion permission denied</b> · allow sensors in browser settings"; return false; }
+    }
+    if(!tiltListenerAdded){ addEventListener("deviceorientation",onOrient,true); tiltListenerAdded=true; }
+    hintEl.textContent="Waiting for motion sensor…";
+    tiltTimer=setTimeout(()=>{
+      if(!gotTilt){
+        hintEl.innerHTML=window.top===window.self
+          ? "<b>No motion events</b> · check browser site permissions"
+          : "<b>Motion blocked in this embedded view</b> · open the direct link";
+      }
+    },1800);
+    return true;
+  }catch(e){ hintEl.innerHTML=`<b>Motion unavailable</b> · ${e.name||"browser blocked it"}`; return false; }
+}
+function recenter(){ if(tiltOK){ beta0=curBeta; gamma0=curGamma; toast("Recentered"); } else toast("Keyboard mode"); }
+document.getElementById("recenterBtn").addEventListener("click",recenter);
+document.getElementById("restartBtn").addEventListener("click",()=>resetMarble(true));
+
+/* ---------------- Flow ---------------- */
+const startOverlay=document.getElementById("startOverlay"), winOverlay=document.getElementById("winOverlay"), hintEl=document.getElementById("hint");
+document.getElementById("startBtn").addEventListener("click",startGame);
+document.getElementById("againBtn").addEventListener("click",startGame);
+async function startGame(){ startOverlay.hidden=true; winOverlay.hidden=true; await enableTilt();
+  setTimeout(()=>{ if(gotTilt)hintEl.innerHTML="Tilt to roll &middot; tap <b>Recenter</b> to re-zero"; },700);
+  resetMarble(false); state="playing"; startTime=performance.now(); elapsed=0; }
+function resetMarble(full){ m.x=START.i; m.y=START.j; m.z=0; m.vx=0; m.vy=0; falling=0; trail=[];
+  if(full&&state==="playing"){ startTime=performance.now(); elapsed=0; } }
+function win(){ state="won"; elapsed=(performance.now()-startTime)/1000;
+  document.getElementById("winTime").textContent=fmt(elapsed);
+  document.getElementById("winSub").textContent = elapsed<18?"Machine-approved. Blazing.":elapsed<32?"Clean run.":"You made it — that's what counts.";
+  winOverlay.hidden=false; const g=toScreen(proj(GOALC.i,GOALC.j,0)); burst(g.x,g.y,64,["#B4FF39","#22F5FF","#FFF3E2"]); flash=0.9; }
+
+/* ---------------- Physics (world plane) ---------------- */
+const MAXA=10, FR=2.2, VMAX=6.4, WALL_E=0.34, R=0.36;
+const RT2=Math.SQRT1_2;
+function computeAccel(){
+  let sx=0, sy=0;                                   // screen-space intent
+  if(keys["arrowleft"]||keys["a"])sx-=1;
+  if(keys["arrowright"]||keys["d"])sx+=1;
+  if(keys["arrowup"]||keys["w"])sy-=1;
+  if(keys["arrowdown"]||keys["s"])sy+=1;
+  if(!(sx||sy) && tiltOK && beta0!==null){
+    const dg=clamp(curGamma-gamma0,-26,26)/26;
+    const db=clamp(curBeta-beta0,-26,26)/26;
+    // Rotate the phone-relative tilt vector into the current screen orientation.
+    switch(screenAngle()){
+      case 90:  sx=-db; sy=dg; break;
+      case 180: sx=-dg; sy=-db; break;
+      case 270: sx=db; sy=-dg; break;
+      default:  sx=dg; sy=db;
+    }
+  } else if(sx||sy){ const mag=Math.hypot(sx,sy)||1; sx/=mag; sy/=mag; }
+  // map screen axes -> world iso axes (right=+x,-y ; down=+x,+y)
+  wax=(sx+sy)*RT2*MAXA;
+  way=(-sx+sy)*RT2*MAXA;
+}
+function integrate(dt){
+  m.vx+=wax*dt; m.vy+=way*dt;
+  const sp=Math.hypot(m.vx,m.vy);
+  if(sp>0){ const nf=Math.max(0,sp-FR*dt)/sp; m.vx*=nf; m.vy*=nf; }
+  const s2=Math.hypot(m.vx,m.vy); if(s2>VMAX){ m.vx*=VMAX/s2; m.vy*=VMAX/s2; }
+  m.x+=m.vx*dt; m.y+=m.vy*dt;
+  collideWalls();
+}
+function collideWalls(){
+  const ci=Math.round(m.x), cj=Math.round(m.y);
+  for(let j=cj-1;j<=cj+1;j++)for(let i=ci-1;i<=ci+1;i++){
+    if(!isWall(i,j))continue;
+    const cx=clamp(m.x,i-0.5,i+0.5), cy=clamp(m.y,j-0.5,j+0.5);
+    let dx=m.x-cx, dy=m.y-cy, d2=dx*dx+dy*dy;
+    if(d2<R*R){
+      let d=Math.sqrt(d2), nx,ny,ov;
+      if(d>1e-4){ nx=dx/d; ny=dy/d; ov=R-d; }
+      else{ const l=m.x-(i-0.5),r=(i+0.5)-m.x,t=m.y-(j-0.5),b=(j+0.5)-m.y,mn=Math.min(l,r,t,b);
+        if(mn===l){nx=-1;ny=0;}else if(mn===r){nx=1;ny=0;}else if(mn===t){nx=0;ny=-1;}else{nx=0;ny=1;} ov=R; }
+      m.x+=nx*ov; m.y+=ny*ov;
+      const vn=m.vx*nx+m.vy*ny;
+      if(vn<0){ m.vx-=(1+WALL_E)*vn*nx; m.vy-=(1+WALL_E)*vn*ny;
+        if(-vn>2){ const s=toScreen(proj(m.x,m.y,0)); sparks(s.x,s.y,"#22F5FF",Math.min(10,-vn*2)); shake=Math.max(shake,Math.min(6,-vn*1.3)); } }
+    }
+  }
+}
+function checkGround(){
+  if(falling>0)return;
+  // over a pit / off the plateau?  sample the tile under the marble center
+  const ci=Math.round(m.x), cj=Math.round(m.y);
+  if(isVoid(ci,cj)){
+    // require the center to be meaningfully over the void, not just clipping an edge
+    const ncx=clamp(m.x,ci-0.5,ci+0.5), ncy=clamp(m.y,cj-0.5,cj+0.5);
+    if(Math.abs(m.x-ci)<0.42 && Math.abs(m.y-cj)<0.42){ startFall(); return; }
+  }
+  if(ci===GOALC.i&&cj===GOALC.j && Math.hypot(m.x-GOALC.i,m.y-GOALC.j)<0.4){ if(state==="playing")win(); }
+}
+function startFall(){ if(state!=="playing")return; falling=0.0001; m.vx*=0.3; m.vy*=0.3; shake=Math.max(shake,7); flash=0.35;
+  const s=toScreen(proj(m.x,m.y,0)); sparks(s.x,s.y,"#7A2FF0",16); }
+
+/* ---------------- Particles ---------------- */
+function sparks(x,y,c,n){ for(let i=0;i<n;i++){ const a=Math.random()*7,sp=40+Math.random()*150; particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:0.5+Math.random()*0.4,age:0,col:c,sz:1+Math.random()*2}); } }
+function burst(x,y,n,cols){ for(let i=0;i<n;i++){ const a=Math.random()*7,sp=60+Math.random()*260; particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:0.7+Math.random()*0.7,age:0,col:cols[i%cols.length],sz:1.5+Math.random()*2.5}); } }
+function stepParticles(dt){ for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.age+=dt; if(p.age>=p.life){ particles.splice(i,1); continue; } p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=0.94; p.vy*=0.94; } }
+
+/* ---------------- Rendering ---------------- */
+function quad(a,b,c,d){ ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.lineTo(c.x,c.y); ctx.lineTo(d.x,d.y); ctx.closePath(); }
+function P(wx,wy,wz){ return toScreen(proj(wx,wy,wz)); }
+
+function drawFloorTile(i,j){
+  const c=cell(i,j);
+  const goal=(c==="G");
+  const T=[P(i-0.5,j-0.5,0),P(i+0.5,j-0.5,0),P(i+0.5,j+0.5,0),P(i-0.5,j+0.5,0)];
+  // side cliffs where neighbor is void: right(+x) toward (i+1,j), left(+y) toward (i,j+1)
+  if(isVoid(i+1,j)){ const b1=P(i+0.5,j-0.5,-DEPTH), b2=P(i+0.5,j+0.5,-DEPTH);
+    const g=ctx.createLinearGradient(T[1].x,T[1].y,b1.x,b1.y); g.addColorStop(0,"#241150"); g.addColorStop(1,"#0A0322");
+    ctx.fillStyle=g; quad(T[1],T[2],b2,b1); ctx.fill(); ctx.strokeStyle="rgba(34,245,255,0.5)"; ctx.lineWidth=1; ctx.stroke(); }
+  if(isVoid(i,j+1)){ const b1=P(i-0.5,j+0.5,-DEPTH), b2=P(i+0.5,j+0.5,-DEPTH);
+    const g=ctx.createLinearGradient(T[3].x,T[3].y,b1.x,b1.y); g.addColorStop(0,"#1B0D40"); g.addColorStop(1,"#070218");
+    ctx.fillStyle=g; quad(T[3],T[2],b2,b1); ctx.fill(); ctx.strokeStyle="rgba(34,245,255,0.35)"; ctx.lineWidth=1; ctx.stroke(); }
+  // top face
+  if(goal){
+    quad(T[0],T[1],T[2],T[3]); const gg=ctx.createLinearGradient(T[0].x,T[0].y,T[2].x,T[2].y);
+    gg.addColorStop(0,"#3f5f10"); gg.addColorStop(1,"#243a08"); ctx.fillStyle=gg; ctx.fill();
+    ctx.strokeStyle="#B4FF39"; ctx.lineWidth=1.6; ctx.stroke();
+  } else {
+    quad(T[0],T[1],T[2],T[3]); ctx.fillStyle=((i+j)&1)?"#140a33":"#170c3a"; ctx.fill();
+    ctx.strokeStyle="rgba(70,40,150,0.55)"; ctx.lineWidth=1; ctx.stroke();
+  }
+}
+function drawWall(i,j){
+  const h=WALLH;
+  const tR=[P(i+0.5,j-0.5,h),P(i+0.5,j+0.5,h)], bR=[P(i+0.5,j-0.5,0),P(i+0.5,j+0.5,0)];
+  const tL=[P(i-0.5,j+0.5,h),P(i+0.5,j+0.5,h)], bL=[P(i-0.5,j+0.5,0),P(i+0.5,j+0.5,0)];
+  // right face (+x)
+  ctx.fillStyle="#1c0b46"; quad(tR[0],tR[1],bR[1],bR[0]); ctx.fill(); ctx.strokeStyle="rgba(34,245,255,0.55)"; ctx.lineWidth=1.2; ctx.stroke();
+  // left face (+y)
+  ctx.fillStyle="#140833"; quad(tL[0],tL[1],bL[1],bL[0]); ctx.fill(); ctx.strokeStyle="rgba(34,245,255,0.35)"; ctx.lineWidth=1.2; ctx.stroke();
+  // top
+  const T=[P(i-0.5,j-0.5,h),P(i+0.5,j-0.5,h),P(i+0.5,j+0.5,h),P(i-0.5,j+0.5,h)];
+  ctx.save(); ctx.shadowColor="#22F5FF"; ctx.shadowBlur=10;
+  quad(T[0],T[1],T[2],T[3]); const g=ctx.createLinearGradient(T[0].x,T[0].y,T[2].x,T[2].y);
+  g.addColorStop(0,"#2a1566"); g.addColorStop(1,"#1a0b40"); ctx.fillStyle=g; ctx.fill();
+  ctx.strokeStyle="#22F5FF"; ctx.lineWidth=1.6; ctx.stroke(); ctx.restore();
+}
+function drawPit(i,j){
+  // recessed danger well: warm-tinted interior + bright pulsing magenta rim
+  const d=DEPTH*0.62;
+  const NW=P(i-0.5,j-0.5,0), NE=P(i+0.5,j-0.5,0), SE=P(i+0.5,j+0.5,0), SW=P(i-0.5,j+0.5,0);
+  const bNW=P(i-0.5,j-0.5,-d), bNE=P(i+0.5,j-0.5,-d), bSE=P(i+0.5,j+0.5,-d), bSW=P(i-0.5,j+0.5,-d);
+  // far interior walls (the ones you look into)
+  ctx.fillStyle="#2a0a1e"; quad(NW,NE,bNE,bNW); ctx.fill();   // north interior
+  ctx.fillStyle="#1c0714"; quad(NW,SW,bSW,bNW); ctx.fill();   // west interior
+  ctx.fillStyle="#05010F"; quad(bNW,bNE,bSE,bSW); ctx.fill(); // bottom
+  ctx.strokeStyle="rgba(255,45,149,0.35)"; ctx.lineWidth=1;
+  quad(NW,NE,bNE,bNW); ctx.stroke(); quad(NW,SW,bSW,bNW); ctx.stroke();
+  // bright pulsing rim on top
+  const pulse=0.6+0.4*Math.sin(NOW/280 + (i+j)*0.6);
+  ctx.save(); ctx.shadowColor="#FF2D95"; ctx.shadowBlur=14*pulse;
+  ctx.strokeStyle="#FF2D95"; ctx.lineWidth=2.4; quad(NW,NE,SE,SW); ctx.stroke();
+  ctx.strokeStyle="rgba(255,150,210,"+(0.5*pulse)+")"; ctx.lineWidth=1; ctx.stroke();
+  ctx.restore();
+}
+function drawMarble(){
+  const g=toScreen(proj(m.x,m.y,0));
+  // ground shadow (skip while deep in fall)
+  if(m.z>-1.4){ ctx.save(); ctx.globalAlpha=Math.max(0,0.5+m.z*0.3); ctx.fillStyle="rgba(5,1,15,0.55)";
+    ctx.beginPath(); ctx.ellipse(g.x,g.y,R*S*0.95,R*S*0.5,0,0,7); ctx.fill(); ctx.restore(); }
+  const c=toScreen(proj(m.x,m.y,m.z+0.42));
+  const rad=R*S*1.02;
+  // contact glow
+  ctx.save(); ctx.globalCompositeOperation="lighter";
+  const cg=ctx.createRadialGradient(c.x,c.y,1,c.x,c.y,rad*2.1);
+  cg.addColorStop(0,"rgba(34,245,255,0.3)"); cg.addColorStop(1,"rgba(34,245,255,0)");
+  ctx.fillStyle=cg; ctx.beginPath(); ctx.arc(c.x,c.y,rad*2.1,0,7); ctx.fill(); ctx.restore();
+  // chrome
+  const bg=ctx.createRadialGradient(c.x-rad*0.35,c.y-rad*0.4,1,c.x,c.y,rad);
+  bg.addColorStop(0,"#EAF6FF"); bg.addColorStop(0.28,"#22F5FF"); bg.addColorStop(0.55,"#8A93B5"); bg.addColorStop(1,"#3A3E66");
+  ctx.fillStyle=bg; ctx.beginPath(); ctx.arc(c.x,c.y,rad,0,7); ctx.fill();
+  ctx.globalAlpha=0.5; ctx.strokeStyle="#FF2D95"; ctx.lineWidth=1.6; ctx.beginPath(); ctx.arc(c.x,c.y,rad-1,0.5,2.0); ctx.stroke(); ctx.globalAlpha=1;
+  ctx.strokeStyle="#120A2E"; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(c.x,c.y,rad,0,7); ctx.stroke();
+  ctx.fillStyle="rgba(255,255,255,0.95)"; ctx.beginPath(); ctx.arc(c.x-rad*0.34,c.y-rad*0.42,rad*0.16,0,7); ctx.fill();
+}
+
+let NOW=0;
+function draw(ts){
+  NOW=ts;
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,cv.width,cv.height);
+  let sx=0,sy=0; if(shake>0.1&&!reduce){ sx=(Math.random()*2-1)*shake; sy=(Math.random()*2-1)*shake; }
+  ctx.save(); ctx.translate(sx,sy);
+
+  // build draw list (painter's order by depth i+j)
+  const items=[];
+  for(let j=0;j<ROWS;j++)for(let i=0;i<COLS;i++){
+    const c=cell(i,j);
+    if(isFloor(i,j)) items.push({d:(i+j),l:0,f:()=>drawFloorTile(i,j)});
+    else if(c==="o") items.push({d:(i+j),l:0,f:()=>drawPit(i,j)});
+    if(isWall(i,j)) items.push({d:(i+j),l:2,f:()=>drawWall(i,j)});
+  }
+  items.sort((a,b)=> a.d-b.d || a.l-b.l);
+  for(const it of items) it.f();
+  // player marble always drawn on top of terrain so squares never hide it
+  drawMarble();
+
+  // particles (screen space)
+  ctx.globalCompositeOperation="lighter";
+  for(const p of particles){ ctx.globalAlpha=Math.max(0,1-p.age/p.life); ctx.fillStyle=p.col; ctx.beginPath(); ctx.arc(p.x,p.y,p.sz,0,7); ctx.fill(); }
+  ctx.globalAlpha=1; ctx.globalCompositeOperation="source-over";
+  ctx.restore();
+
+  // scanlines + vignette
+  if(!reduce){ ctx.save(); ctx.globalAlpha=0.05; ctx.fillStyle="#000";
+    for(let y=0;y<innerHeight;y+=3) ctx.fillRect(0,y,innerWidth,1.3); ctx.restore();
+    const vg=ctx.createRadialGradient(innerWidth/2,innerHeight*0.42,innerHeight*0.2,innerWidth/2,innerHeight*0.42,innerHeight*0.72);
+    vg.addColorStop(0,"rgba(0,0,0,0)"); vg.addColorStop(1,"rgba(0,0,0,0.4)"); ctx.fillStyle=vg; ctx.fillRect(0,0,innerWidth,innerHeight); }
+  if(flash>0.01){ ctx.fillStyle="rgba(180,255,57,"+(flash*0.4)+")"; ctx.fillRect(0,0,innerWidth,innerHeight); }
+}
+
+/* ---------------- Loop ---------------- */
+let last=performance.now();
+function frame(ts){ let dt=(ts-last)/1000; last=ts; if(dt>0.05)dt=0.05;
+  if(state==="playing"){
+    if(falling>0){
+      falling+=dt; m.z-=dt*7; m.x+=m.vx*dt; m.y+=m.vy*dt;
+      if(falling>0.55){ resetMarble(false); }
+    } else {
+      computeAccel();
+      const SUB=3; for(let k=0;k<SUB;k++) integrate(dt/SUB);
+      checkGround();
+    }
+    elapsed=(ts-startTime)/1000; timerEl.textContent=fmt(elapsed);
+  }
+  stepParticles(dt);
+  if(shake>0)shake=Math.max(0,shake-dt*22);
+  if(flash>0)flash=Math.max(0,flash-dt*1.6);
+  draw(ts); requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---------------- Helpers ---------------- */
+const timerEl=document.getElementById("timer");
+function fmt(s){ const m=Math.floor(s/60), r=s-m*60; return String(m).padStart(2,"0")+":"+r.toFixed(1).padStart(4,"0"); }
+function clamp(v,a,b){ return v<a?a:v>b?b:v; }
+let toastT=null; function toast(msg){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove("show"),1100); }
+addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
+</script>
