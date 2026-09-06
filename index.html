@@ -1,4 +1,9 @@
-<title>Grid Runner Glow</title>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Marble Madness Ode</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&display=swap">
@@ -40,6 +45,8 @@
   .toast{ position:fixed; left:50%; top:74px; transform:translateX(-50%) translateY(-8px); z-index:8; font-family:"Orbitron",sans-serif; font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:var(--cyan); background:rgba(11,2,33,0.9); border:1px solid rgba(34,245,255,0.5); padding:8px 16px; border-radius:10px; opacity:0; transition:opacity .25s,transform .25s; pointer-events:none; box-shadow:0 0 14px rgba(34,245,255,0.3); }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 </style>
+</head>
+<body>
 
 <div id="app"><canvas id="game"></canvas></div>
 
@@ -77,6 +84,7 @@
 <script>
 const cv=document.getElementById("game"), ctx=cv.getContext("2d");
 const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+const mobilePerf=matchMedia("(pointer: coarse)").matches;
 
 /* ---------------- Level (isometric tile grid) ----------------
    '.' floor   '#' wall block   'o' pit (void in floor)   ' ' void
@@ -128,7 +136,7 @@ function computeFit(){
   oxp=(w-(maxX+minX)*S)/2;
   oyp=padTop + (-minY)*S + ((h-padTop-padBot)-(maxY-minY)*S)/2;
 }
-function resize(){ const w=innerWidth,h=innerHeight; dpr=Math.min(devicePixelRatio||1,2);
+function resize(){ const w=innerWidth,h=innerHeight; dpr=mobilePerf?1:Math.min(devicePixelRatio||1,2);
   cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); cv.style.width=w+"px"; cv.style.height=h+"px"; computeFit(); }
 addEventListener("resize",resize); resize();
 
@@ -142,6 +150,7 @@ const keys={};
 let tiltOK=false, gotTilt=false, tiltListenerAdded=false;
 let beta0=null, gamma0=null, curBeta=0, curGamma=0;
 let tiltTimer=null;
+let wakeLock=null;
 let wax=0, way=0;
 
 /* ---------------- Input ---------------- */
@@ -184,6 +193,19 @@ async function enableTilt(){
   }catch(e){ hintEl.innerHTML=`<b>Motion unavailable</b> · ${e.name||"browser blocked it"}`; return false; }
 }
 function recenter(){ if(tiltOK){ beta0=curBeta; gamma0=curGamma; toast("Recentered"); } else toast("Keyboard mode"); }
+async function keepScreenAwake(){
+  if(!("wakeLock" in navigator)||document.visibilityState!=="visible"||wakeLock)return;
+  try{
+    wakeLock=await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release",()=>{ wakeLock=null; });
+  }catch(e){ /* Battery saver or browser policy may refuse; gameplay still works. */ }
+}
+async function releaseWakeLock(){
+  if(wakeLock){ const lock=wakeLock; wakeLock=null; try{ await lock.release(); }catch(e){} }
+}
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible"&&state==="playing")keepScreenAwake();
+});
 document.getElementById("recenterBtn").addEventListener("click",recenter);
 document.getElementById("restartBtn").addEventListener("click",()=>resetMarble(true));
 
@@ -191,12 +213,12 @@ document.getElementById("restartBtn").addEventListener("click",()=>resetMarble(t
 const startOverlay=document.getElementById("startOverlay"), winOverlay=document.getElementById("winOverlay"), hintEl=document.getElementById("hint");
 document.getElementById("startBtn").addEventListener("click",startGame);
 document.getElementById("againBtn").addEventListener("click",startGame);
-async function startGame(){ startOverlay.hidden=true; winOverlay.hidden=true; await enableTilt();
+async function startGame(){ startOverlay.hidden=true; winOverlay.hidden=true; keepScreenAwake(); await enableTilt();
   setTimeout(()=>{ if(gotTilt)hintEl.innerHTML="Tilt to roll &middot; tap <b>Recenter</b> to re-zero"; },700);
   resetMarble(false); state="playing"; startTime=performance.now(); elapsed=0; }
 function resetMarble(full){ m.x=START.i; m.y=START.j; m.z=0; m.vx=0; m.vy=0; falling=0; trail=[];
   if(full&&state==="playing"){ startTime=performance.now(); elapsed=0; } }
-function win(){ state="won"; elapsed=(performance.now()-startTime)/1000;
+function win(){ state="won"; releaseWakeLock(); elapsed=(performance.now()-startTime)/1000;
   document.getElementById("winTime").textContent=fmt(elapsed);
   document.getElementById("winSub").textContent = elapsed<18?"Machine-approved. Blazing.":elapsed<32?"Clean run.":"You made it — that's what counts.";
   winOverlay.hidden=false; const g=toScreen(proj(GOALC.i,GOALC.j,0)); burst(g.x,g.y,64,["#B4FF39","#22F5FF","#FFF3E2"]); flash=0.9; }
@@ -305,7 +327,7 @@ function drawWall(i,j){
   ctx.fillStyle="#140833"; quad(tL[0],tL[1],bL[1],bL[0]); ctx.fill(); ctx.strokeStyle="rgba(34,245,255,0.35)"; ctx.lineWidth=1.2; ctx.stroke();
   // top
   const T=[P(i-0.5,j-0.5,h),P(i+0.5,j-0.5,h),P(i+0.5,j+0.5,h),P(i-0.5,j+0.5,h)];
-  ctx.save(); ctx.shadowColor="#22F5FF"; ctx.shadowBlur=10;
+  ctx.save(); ctx.shadowColor="#22F5FF"; ctx.shadowBlur=mobilePerf?3:10;
   quad(T[0],T[1],T[2],T[3]); const g=ctx.createLinearGradient(T[0].x,T[0].y,T[2].x,T[2].y);
   g.addColorStop(0,"#2a1566"); g.addColorStop(1,"#1a0b40"); ctx.fillStyle=g; ctx.fill();
   ctx.strokeStyle="#22F5FF"; ctx.lineWidth=1.6; ctx.stroke(); ctx.restore();
@@ -323,7 +345,7 @@ function drawPit(i,j){
   quad(NW,NE,bNE,bNW); ctx.stroke(); quad(NW,SW,bSW,bNW); ctx.stroke();
   // bright pulsing rim on top
   const pulse=0.6+0.4*Math.sin(NOW/280 + (i+j)*0.6);
-  ctx.save(); ctx.shadowColor="#FF2D95"; ctx.shadowBlur=14*pulse;
+  ctx.save(); ctx.shadowColor="#FF2D95"; ctx.shadowBlur=(mobilePerf?4:14)*pulse;
   ctx.strokeStyle="#FF2D95"; ctx.lineWidth=2.4; quad(NW,NE,SE,SW); ctx.stroke();
   ctx.strokeStyle="rgba(255,150,210,"+(0.5*pulse)+")"; ctx.lineWidth=1; ctx.stroke();
   ctx.restore();
@@ -356,18 +378,19 @@ function draw(ts){
   let sx=0,sy=0; if(shake>0.1&&!reduce){ sx=(Math.random()*2-1)*shake; sy=(Math.random()*2-1)*shake; }
   ctx.save(); ctx.translate(sx,sy);
 
-  // build draw list (painter's order by depth i+j)
-  const items=[];
+  // Draw the floor as one base layer, then depth-sort the marble among walls.
+  // This prevents both failure modes: floor edges cannot cover the marble,
+  // while foreground walls can still hide it correctly.
+  const baseItems=[], depthItems=[];
   for(let j=0;j<ROWS;j++)for(let i=0;i<COLS;i++){
     const c=cell(i,j);
-    if(isFloor(i,j)) items.push({d:(i+j),l:0,f:()=>drawFloorTile(i,j)});
-    else if(c==="o") items.push({d:(i+j),l:0,f:()=>drawPit(i,j)});
-    if(isWall(i,j)) items.push({d:(i+j),l:2,f:()=>drawWall(i,j)});
+    if(isFloor(i,j)) baseItems.push({d:i+j,f:()=>drawFloorTile(i,j)});
+    else if(c==="o") baseItems.push({d:i+j,f:()=>drawPit(i,j)});
+    if(isWall(i,j)) depthItems.push({d:i+j,l:2,f:()=>drawWall(i,j)});
   }
-  items.sort((a,b)=> a.d-b.d || a.l-b.l);
-  for(const it of items) it.f();
-  // player marble always drawn on top of terrain so squares never hide it
-  drawMarble();
+  baseItems.sort((a,b)=>a.d-b.d); for(const it of baseItems)it.f();
+  depthItems.push({d:m.x+m.y,l:1,f:drawMarble});
+  depthItems.sort((a,b)=>a.d-b.d||a.l-b.l); for(const it of depthItems)it.f();
 
   // particles (screen space)
   ctx.globalCompositeOperation="lighter";
@@ -376,7 +399,7 @@ function draw(ts){
   ctx.restore();
 
   // scanlines + vignette
-  if(!reduce){ ctx.save(); ctx.globalAlpha=0.05; ctx.fillStyle="#000";
+  if(!reduce&&!mobilePerf){ ctx.save(); ctx.globalAlpha=0.05; ctx.fillStyle="#000";
     for(let y=0;y<innerHeight;y+=3) ctx.fillRect(0,y,innerWidth,1.3); ctx.restore();
     const vg=ctx.createRadialGradient(innerWidth/2,innerHeight*0.42,innerHeight*0.2,innerWidth/2,innerHeight*0.42,innerHeight*0.72);
     vg.addColorStop(0,"rgba(0,0,0,0)"); vg.addColorStop(1,"rgba(0,0,0,0.4)"); ctx.fillStyle=vg; ctx.fillRect(0,0,innerWidth,innerHeight); }
@@ -411,3 +434,5 @@ function clamp(v,a,b){ return v<a?a:v>b?b:v; }
 let toastT=null; function toast(msg){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove("show"),1100); }
 addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
 </script>
+</body>
+</html>
