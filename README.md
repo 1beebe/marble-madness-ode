@@ -1,6 +1,6 @@
-# Marble Madness Ode
+# Gridfall
 
-A mobile-friendly, isometric tilt-to-roll tribute to *Marble Madness*.
+A mobile-friendly, neon isometric tilt-to-roll arcade game inspired by the classics.
 
 ## Play
 
